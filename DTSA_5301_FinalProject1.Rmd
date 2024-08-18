@@ -1,0 +1,174 @@
+---
+title: "WEEK3_NYPD Shooting Incident Data Report"
+date: "2024-07-21"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This report is about the analysis of the file "NYPD Shooting Incident Data" (https://catalog.data.gov/dataset)"
+
+
+# Part1. Data Inspecting
+
+1.Checking data columns  
+- Sample data are shown below. There are 21 columns of the data.
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+   tinytex::install_tinytex(force = TRUE)
+   library(conflicted)
+   library(latex2exp)
+   library(tidyverse)
+   data_origin <- read_csv("NYPD_Shooting_Incident_Data__Historic_.csv")
+   head(data_origin, 5)
+```
+2.Checking data summary  
+- In the data summary, I checked the minimum and maximum value, data type, and number of records for each column.
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+   summary(data_origin)
+```
+3.Scatter plot of the shooting incident  
+- Below is a scatter plot of the number of cases at latitude and longitude, with different colors and symbols for each BORO. The figure shows that some areas are more frequent than others.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=15,fig.height=15}
+
+plot(data_origin$Latitude ,data_origin$Longitude, main="Scatter plot graph of the shooting incident", xlab="Latitude", ylab="Longitude", type="n")
+
+points(data_origin$Latitude[data_origin$BORO == "BRONX"], data_origin$Longitude[data_origin$BORO == "BRONX"], pch = 1, cex = 0.8, col = "blue")
+points(data_origin$Latitude[data_origin$BORO == "BROOKLYN"], data_origin$Longitude[data_origin$BORO == "BROOKLYN"], pch = 1, cex = 0.8, col = "red")
+points(data_origin$Latitude[data_origin$BORO == "MANHATTAN"], data_origin$Longitude[data_origin$BORO == "MANHATTAN"], pch = 16, cex = 0.8, col = "green")
+points(data_origin$Latitude[data_origin$BORO == "QUEENS"], data_origin$Longitude[data_origin$BORO == "QUEENS"], pch = 16, cex = 0.8, col = "blue")
+points(data_origin$Latitude[data_origin$BORO == "STATEN ISLAND"], data_origin$Longitude[data_origin$BORO == "STATEN ISLAND"], pch = 16, cex = 0.8, col = "red")
+
+legend("topright", pch = c(1, 1, 16, 16, 16), cex = 1, pt.cex = 1.5, legend = c("BRONX", "BROOKLYN", "MANHATTAN", "QUEENS", "STATEN ISLAND"), col = c("blue", "red", "green","blue", "red"))
+
+```
+4.Checking missing values  
+- For subsequent analysis, I checked the OCCUR_DATE column and BORO column for missing values. The results show no missing values for either.
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+   sum( is.na (data_origin$OCCUR_DATE))
+   sum( is.na (data_origin$BORO))
+```
+
+5.Checking the historical trend  
+- The following is a time series of the number of occurrences by BORO. The graph shows that BROOKLYN and BRONX are two of the highest BORO, with an overall downward trend. It can also be seen that the number of incidents temporarily increased around 2020 and then decreased again.
+
+-Although the number of shootings seems to have decreased in recent years due to frequent calls for stricter gun control, the actual number of shootings per year shows a sharp increase around 2020.
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=10,fig.height=3}
+   library(lubridate)
+   data_origin$OCCUR_DATE <- mdy(data_origin$OCCUR_DATE)
+   data_sum <- data_origin %>%
+   mutate(OCCUR_YM = substr(OCCUR_DATE, 1, 4)) %>%
+   group_by(OCCUR_YM, BORO) %>%
+   summarise(count = n())
+   print(data_sum)
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=15,fig.height=5}
+#install.packages("ggplot2")
+library(ggplot2)
+
+data_sum_BRONX <- data_sum %>% dplyr::filter(BORO == "BRONX")
+data_sum_BRONX <- dplyr::mutate(data_sum_BRONX, OCCUR_YM = as.numeric(OCCUR_YM))
+
+data_sum_BROOKLYN <- data_sum %>% dplyr::filter(BORO == "BROOKLYN")
+data_sum_BROOKLYN <- dplyr::mutate(data_sum_BROOKLYN, OCCUR_YM = as.numeric(OCCUR_YM))
+
+data_sum_MANHATTAN <- data_sum %>% dplyr::filter(BORO == "MANHATTAN")
+data_sum_MANHATTAN <- dplyr::mutate(data_sum_MANHATTAN, OCCUR_YM = as.numeric(OCCUR_YM))
+
+data_sum_QUEENS <- data_sum %>% dplyr::filter(BORO == "QUEENS")
+data_sum_QUEENS <- dplyr::mutate(data_sum_QUEENS, OCCUR_YM = as.numeric(OCCUR_YM))
+
+data_sum_STATENISLAND <- data_sum %>% dplyr::filter(BORO == "STATEN ISLAND")
+data_sum_STATENISLAND <- dplyr::mutate(data_sum_STATENISLAND, OCCUR_YM = as.numeric(OCCUR_YM))
+
+data <- rbind(data_sum_BRONX, data_sum_BROOKLYN, data_sum_MANHATTAN, data_sum_QUEENS, data_sum_STATENISLAND)
+
+ggplot(data, aes(x = OCCUR_YM, y = count, color = BORO)) + 
+  geom_line() +
+  ggtitle("NYPD Shooting Incident") +
+  xlab("OCCUR_YM") +
+  ylab("count") +
+  theme_minimal()  # シンプルなテーマを適用
+```
+
+# Part2. Model Building
+Linear regression analysis was performed on time series data of the number of occurrences for each BORO.
+
+1.BRONX
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=15,fig.height=5}
+mod <- lm(count ~ OCCUR_YM, data = data_sum_BRONX)
+summary(mod)
+
+plot(data_sum_BRONX$OCCUR_YM, data_sum_BRONX$count, xlab = "", ylab = "")
+data_sum_pred <- predict(mod, data_sum_BRONX)
+par(new = TRUE)
+dataOrder <- order(data_sum_BRONX$OCCUR_YM)
+plot(data_sum_BRONX$OCCUR_YM[dataOrder], data_sum_pred[dataOrder], col = "blue",
+xlab = "OCCUR_YM", ylab = "COUNT_BRONX", axes=FALSE, type = "l", lwd = 1, lty = 1, pch = 1)
+```
+2.BROOKLYN
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=15,fig.height=5}
+mod2 <- lm(count ~ OCCUR_YM, data = data_sum_BROOKLYN)
+summary(mod2)
+
+plot(data_sum_BROOKLYN$OCCUR_YM, data_sum_BROOKLYN$count, xlab = "", ylab = "")
+data_sum_pred <- predict(mod2, data_sum_BROOKLYN)
+par(new = TRUE)
+dataOrder <- order(data_sum_BROOKLYN$OCCUR_YM)
+plot(data_sum_BROOKLYN$OCCUR_YM[dataOrder], data_sum_pred[dataOrder], col = "red",
+xlab = "OCCUR_YM", ylab = "COUNT_BROOKLYN", axes=FALSE, type = "l", lwd = 1, lty = 1, pch = 1)
+```
+3.MANHATTAN
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=15,fig.height=5}
+mod3 <- lm(count ~ OCCUR_YM, data = data_sum_MANHATTAN)
+summary(mod3)
+
+plot(data_sum_MANHATTAN$OCCUR_YM, data_sum_MANHATTAN$count, xlab = "", ylab = "")
+data_sum_pred <- predict(mod3, data_sum_MANHATTAN)
+par(new = TRUE)
+dataOrder <- order(data_sum_MANHATTAN$OCCUR_YM)
+plot(data_sum_MANHATTAN$OCCUR_YM[dataOrder], data_sum_pred[dataOrder], col = "green",
+xlab = "OCCUR_YM", ylab = "COUNT_MANHATTAN", axes=FALSE, type = "l", lwd = 1, lty = 1, pch = 1)
+```
+
+4.QUEENS
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=15,fig.height=5}
+mod4 <- lm(count ~ OCCUR_YM, data = data_sum_QUEENS)
+summary(mod4)
+
+plot(data_sum_QUEENS$OCCUR_YM, data_sum_QUEENS$count, xlab = "", ylab = "")
+data_sum_pred <- predict(mod4, data_sum_QUEENS)
+par(new = TRUE)
+dataOrder <- order(data_sum_QUEENS$OCCUR_YM)
+plot(data_sum_QUEENS$OCCUR_YM[dataOrder], data_sum_pred[dataOrder], col = "red",
+xlab = "OCCUR_YM", ylab = "COUNT_QUEENS", axes=FALSE, type = "l", lwd = 1, lty = 1, pch = 1)
+```
+
+5.STATEN ISLAND
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=15,fig.height=5}
+mod5 <- lm(count ~ OCCUR_YM, data = data_sum_STATENISLAND)
+summary(mod5)
+
+plot(data_sum_STATENISLAND$OCCUR_YM, data_sum_STATENISLAND$count, xlab = "", ylab = "")
+data_sum_pred <- predict(mod5, data_sum_STATENISLAND)
+par(new = TRUE)
+dataOrder <- order(data_sum_STATENISLAND$OCCUR_YM)
+plot(data_sum_STATENISLAND$OCCUR_YM[dataOrder], data_sum_pred[dataOrder], col = "blue",
+xlab = "OCCUR_YM", ylab = "COUNT_STATENISLAND", axes=FALSE, type = "l", lwd = 1, lty = 1, pch = 1)
+```
+
+Summary  
+- For BROOKLYN and STATEN ISLAND, the actual number of incidents per time series seems to match the predictions, and the adjusted R2 values are also relatively high. But for the others, BRONX, MANHATTAN, and QUEENS, the trends seem to change before and after 2020, and there seems to be a limitation in creating a predict model based on only a single factor of the year of occurrence.  
+  
+  
+# Conclusion
+・Although the number of shootings seems to have decreased in recent years due to frequent calls for stricter gun control, the actual number of shootings per year shows a sharp increase around 2020. There seem to be two factors contributing to this. First, the economic situation has worsened due to the Corona Virus, which has also worsened public safety. Second, the number of guns on the market itself has increased. In years when there is a presidential election, gun sales increase considerably. Every time there is a presidential election, there is a movement to buy guns while they are still available, thinking, “Perhaps the next administration will enact gun control.  
+  
+・In order to eliminate the bias such as above case in the early stages of modeling, it seems important to visualize the data and identify trends.  
+・A regression model was created to predict the number of occurrences per BORO using the year of occurrence as a factor, but the results showed that the linear model had limitations in predicting the number of occurrences because the data trends changed around the year 2020.  
+ 

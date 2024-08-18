@@ -1,0 +1,481 @@
+---
+title: "WEEK5_Final Project2"
+date: "2024-08-18"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+This report is about the analysis of the file "COVID-19 Data" (https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/)"
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(conflicted)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(leaflet) # install.packages("leaflet")
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+file_names <- c("time_series_covid19_confirmed_global.csv",
+                "time_series_covid19_deaths_global.csv",
+                "time_series_covid19_confirmed_US.csv",
+                "time_series_covid19_deaths_US.csv")
+urls <- str_c(url_in, file_names)
+urls
+```
+
+## Part1. Data Inspecting (What kind of data are we dealing with?)
+
+- "global_cases" and "Global_deaths" have 1147 columns of the data.
+  "US_cases" and "US_deaths" have 1154 columns and 1155 columns of the data.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global_cases <- read_csv(urls[1])
+global_deaths <- read_csv(urls[2])
+US_cases <- read_csv(urls[3])
+US_deaths <- read_csv(urls[4])
+```
+
+- Sample data are shown below.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global_cases
+```
+
+- Converts the columns specified in the argument cols to vertical data by using pivot_longer function.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global_cases <- global_cases %>%
+     pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+                  names_to = "date", values_to = "cases") %>%
+     select(-c()) #select(-c(Lat, Long))
+global_cases
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global_deaths <- global_deaths %>%
+     pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+                  names_to = "date", values_to = "deaths") %>%
+     select(-c()) #select(-c(Lat, Long))
+global_deaths
+```
+
+- Combine "global_cases" and "global_deaths". By doing so, we can check the number of cases and deaths by region and date.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global <- global_cases %>%
+     full_join(global_deaths) %>%
+     rename(Country_Region ='Country/Region',
+            Province_State = 'Province/State') %>%
+     mutate(date = mdy(date))
+global
+```
+
+- Below is a summary of "global". Lat column and Long column in "global" have NA records.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+summary(global)
+```
+
+- NA values in Lat and Long are complemented with 0.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global <- mutate_if(global, is.numeric, ~replace(., is.na(.), 0))
+summary(global)
+```
+
+- Filtering so that only cases greater than to 0 are considered.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global <- global %>% dplyr::filter(cases > 0)
+global
+summary(global)
+```
+
+- In the following, I will do for U.S. data what I did for global data.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_cases
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_cases <- US_cases %>%
+    pivot_longer(cols = -(UID:Combined_Key),
+                 names_to = "date",
+                 values_to = "cases") %>%
+    select(Admin2:cases) %>%
+    mutate(date = mdy(date)) %>%
+    select(-c()) #select(-c(Lat, Long_))
+US_cases
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_deaths <- US_deaths %>%
+    pivot_longer(cols = -(UID:Population),
+                 names_to = "date",
+                 values_to = "deaths") %>%
+    select(Admin2:deaths) %>%
+    mutate(date = mdy(date)) %>%
+    select(-c()) #select(-c(Lat, Long_))
+US_deaths
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US <- US_cases %>%
+   full_join(US_deaths)
+US
+```
+
+- Create a new column with Province_State and Country_Region.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global <- global %>%
+    unite("Combined_Key",
+          c(Province_State, Country_Region),
+          sep = ", ",
+          na.rm = TRUE,
+          remove = FALSE)
+global
+```
+
+## Part2. Scatter plot of the cases (What is the distribution of the number of infection?) 
+- Below is a scatter plot of the number of cases at latitude and longitude. Plotted at two time points, 2020-02-28 and 2023-02-28, I see a general increase in the number of cases. However, since this figure only shows latitude and longitude, it does not provide information on which countries the increase is occurring in.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=6,fig.height=6}
+
+min_value1 <- -90
+max_value1 <- 90
+min_value2 <- -180
+max_value2 <- 180
+limit <- 10000000
+
+global2 <- global %>% dplyr::filter(date == "2020-02-28")
+ggplot(global2,aes(x=Long, y=Lat, fill=cases)) +
+geom_point(shape=21, size=2.0) +
+scale_fill_gradient(low = "white",high = "red", limits = c(0, limit)) +
+scale_x_continuous(limits = c(min_value2, max_value2)) +
+scale_y_continuous(limits = c(min_value1, max_value1))
+
+global2 <- global %>% dplyr::filter(date == "2023-02-28")
+ggplot(global2,aes(x=Long, y=Lat, fill=cases)) +
+geom_point(shape=21, size=2.0) +
+scale_fill_gradient(low = "white",high = "red", limits = c(0, limit)) +
+scale_x_continuous(limits = c(min_value2, max_value2)) +
+scale_y_continuous(limits = c(min_value1, max_value1))
+
+```
+
+- So I used leaflet to merge the world map with a scatter plot of latitude and longitude. Leaflet is an open-source JavaScript library for interactive maps. This R package makes it easy to create Leaflet maps from R. https://rstudio.github.io/leaflet/articles/leaflet.html
+
+- The results of plotting the number of cases for 2020-02-28 and 2023-02-28 on a world map using Leaflet are shown below. The difference between the early and late stages of the covid-19 in the number of cases per country can be seen. In the early stage, only China had many cases of infection. In the late stage, the United States has the highest number of cases, and other large cities with large populations, such as India, Brazil, France, and Japan, have many number of infections.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=10,fig.height=10}
+
+global2 <- global %>% dplyr::filter(date == "2020-02-28")
+m <- leaflet(global2) %>% 
+  addTiles() %>%
+  setView(lng=30,lat=0,zoom=2)
+pal2 <- colorNumeric(palette = "YlOrRd", domain = global2$cases) 
+m %>%
+  addCircleMarkers(~Long, ~Lat, color = ~pal2(cases), fillOpacity = 1, stroke = F, radius = 5) %>%
+  addLegend(position='bottomleft', pal = pal2, values = ~cases) 
+
+
+global2 <- global %>% dplyr::filter(date == "2023-02-28")
+m <- leaflet(global2) %>% 
+  addTiles() %>%
+  setView(lng=30,lat=0,zoom=2)
+pal2 <- colorNumeric(palette = "YlOrRd", domain = global2$cases) 
+m %>%
+  addCircleMarkers(~Long, ~Lat, color = ~pal2(cases), fillOpacity = 1, stroke = F, radius = 5) %>%
+  addLegend(position='bottomleft', pal = pal2, values = ~cases) 
+
+```
+
+- The number of cases in the US is plotted on the map as well.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, fig.width=10,fig.height=10}
+
+US2 <- US %>% dplyr::filter(date == "2020-02-28")
+m <- leaflet(US2) %>% 
+  addTiles() %>%
+  setView(lng=-97,lat=38,zoom=4)
+pal2 <- colorNumeric(palette = "YlOrRd", domain = US2$cases) 
+m %>%
+  addCircleMarkers(~Long_, ~Lat, color = ~pal2(cases), fillOpacity = 1, stroke = F, radius = 3) %>%
+  addLegend(position='bottomleft', pal = pal2, values = ~cases) 
+
+
+US2 <- US %>% dplyr::filter(date == "2023-02-28")
+m <- leaflet(US2) %>% 
+  addTiles() %>%
+  setView(lng=-97,lat=38,zoom=4)
+pal2 <- colorNumeric(palette = "YlOrRd", domain = US2$cases) 
+m %>%
+  addCircleMarkers(~Long_, ~Lat, color = ~pal2(cases), fillOpacity = 1, stroke = F, radius = 3) %>%
+  addLegend(position='bottomleft', pal = pal2, values = ~cases) 
+
+```
+
+
+## Part3. Checking the histrical trend (What is the time-series trend in the number of infection?) 
+
+- Use an additional data to add country-specific population information.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+uid_lookup_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv"
+
+uid <- read_csv(uid_lookup_url) %>%
+    select(-c(Lat, Long_, Combined_Key, code3, iso2, iso3, Admin2))
+uid
+```
+
+- Merge population column into "global" data.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+global <- global %>%
+    left_join(uid, by = c("Province_State", "Country_Region")) %>%
+    select(-c(UID, FIPS)) %>%
+    select(Province_State, Country_Region, date, cases, deaths, Population, Combined_Key)
+global
+```
+
+- Group data by “Province_State” (state or region), “Country_Region” (country or region), and “date” (date).
+ Within each group, calculate the sum of “cases” (number of cases) and “deaths” (number of deaths).
+ At the same time, the “Population” totals are calculated. Add “deaths_per_mill” (deaths per million) to each row.
+ Divide the number of deaths by the population to compute the number of deaths per million.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_by_state <- US %>%
+    group_by(Province_State, Country_Region, date) %>%
+    summarize(cases = sum(cases), deaths = sum(deaths),
+              Population = sum(Population)) %>%
+    mutate(deaths_per_mill = deaths *1000000 / Population) %>%
+    select(Province_State, Country_Region, date,
+           cases, deaths, deaths_per_mill, Population) %>%
+    ungroup()
+US_by_state
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_totals <- US_by_state %>%
+    group_by(Country_Region, date) %>%
+    summarize(cases = sum(cases), deaths = sum(deaths),
+              Population = sum(Population)) %>%
+    mutate(deaths_per_mill = deaths *1000000 / Population) %>%
+    select(Country_Region, date,
+           cases, deaths, deaths_per_mill, Population) %>%
+    ungroup()
+US_totals
+```
+
+- Below are the cases and the number of deaths across the U.S.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_totals %>%
+    dplyr::filter(cases > 0) %>%
+    ggplot(aes(x = date, y = cases)) +
+    geom_line(aes(color = "cases")) +
+    geom_point(aes(color = "cases")) +
+    geom_line(aes(y = deaths, color = "deaths")) +
+    geom_point(aes(y = deaths, color = "deaths")) +
+    scale_y_log10() +
+    theme(legend.position="bottom",
+          axis.text.x = element_text(angle = 90)) +
+    labs(title = "COVID19 in US", y= NULL)
+```
+- Below are the cases and the number of deaths in New York.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+state <- "California"
+US_by_state %>%
+    dplyr::filter(Province_State == state) %>%
+    dplyr::filter(cases > 0) %>%
+    ggplot(aes(x = date, y = cases)) +
+    geom_line(aes(color = "cases")) +
+    geom_point(aes(color = "cases")) +
+    geom_line(aes(y = deaths, color = "deaths")) +
+    geom_point(aes(y = deaths, color = "deaths")) +
+    scale_y_log10() +
+    theme(legend.position="bottom",
+          axis.text.x = element_text(angle = 90)) +
+    labs(title = "COVID19 in California", y= NULL)
+```
+- Highest number of deaths in US total.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+max(US_totals$deaths) 
+```
+
+- Add the new_cases column and new_deaths column which express difference from the previous day. 
+(lag function -> Shift x backward by n)
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_by_state <- US_by_state %>%
+     mutate(new_cases = cases - dplyr::lag(cases),
+            new_deaths = deaths - dplyr::lag(deaths))
+US_totals <- US_totals %>%
+     mutate(new_cases = cases - dplyr::lag(cases),
+            new_deaths = deaths - dplyr::lag(deaths))
+
+tail(US_totals)
+#tail(US_totals %>% select(new_cases, new_deaths, everything()))
+```
+
+- The historical trends for the new_cases and new_deaths are as follows.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_totals %>%
+    ggplot(aes(x = date, y = new_cases)) +
+    geom_line(aes(color = "new_cases")) +
+    geom_point(aes(color = "new_cases")) +
+    geom_line(aes(y = new_deaths, color = "new_deaths")) +
+    geom_point(aes(y = new_deaths, color = "new_deaths")) +
+    scale_y_log10() +
+    theme(legend.position="bottom",
+          axis.text.x = element_text(angle = 90)) +
+    labs(title = "COVID19 in US", y= NULL)
+```
+
+- Similarly, historical trends for India, China, Brazil, Japan are shown below.
+- While the number of cases in all countries has increased over the years, China and Japan, in particular, have succeeded in halting the spread of the infection in its early stages, resulting in a gradual increase in the number of cases.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+global_totals <- global %>%
+    group_by(Country_Region, date) %>%
+    summarize(cases = sum(cases), deaths = sum(deaths),
+              Population = sum(Population)) %>%
+    mutate(deaths_per_mill = deaths *1000000 / Population) %>%
+    select(Country_Region, date,
+           cases, deaths, deaths_per_mill, Population) %>%
+    ungroup()
+#global_totals
+
+country <- "India"
+global_totals %>%
+    dplyr::filter(Country_Region == country) %>%
+    dplyr::filter(cases > 0) %>%
+    ggplot(aes(x = date, y = cases)) +
+    geom_line(aes(color = "cases")) +
+    geom_point(aes(color = "cases")) +
+    geom_line(aes(y = deaths, color = "deaths")) +
+    geom_point(aes(y = deaths, color = "deaths")) +
+    scale_y_log10() +
+    theme(legend.position="bottom",
+          axis.text.x = element_text(angle = 90)) +
+    labs(title = "COVID19 in India", y= NULL)
+
+country <- "China"
+global_totals %>%
+    dplyr::filter(Country_Region == country) %>%
+    dplyr::filter(cases > 0) %>%
+    ggplot(aes(x = date, y = cases)) +
+    geom_line(aes(color = "cases")) +
+    geom_point(aes(color = "cases")) +
+    geom_line(aes(y = deaths, color = "deaths")) +
+    geom_point(aes(y = deaths, color = "deaths")) +
+    scale_y_log10() +
+    theme(legend.position="bottom",
+          axis.text.x = element_text(angle = 90)) +
+    labs(title = "COVID19 in China", y= NULL)
+
+country <- "Brazil"
+global_totals %>%
+    dplyr::filter(Country_Region == country) %>%
+    dplyr::filter(cases > 0) %>%
+    ggplot(aes(x = date, y = cases)) +
+    geom_line(aes(color = "cases")) +
+    geom_point(aes(color = "cases")) +
+    geom_line(aes(y = deaths, color = "deaths")) +
+    geom_point(aes(y = deaths, color = "deaths")) +
+    scale_y_log10() +
+    theme(legend.position="bottom",
+          axis.text.x = element_text(angle = 90)) +
+    labs(title = "COVID19 in Brazil", y= NULL)
+
+country <- "Japan"
+global_totals %>%
+    dplyr::filter(Country_Region == country) %>%
+    dplyr::filter(cases > 0) %>%
+    ggplot(aes(x = date, y = cases)) +
+    geom_line(aes(color = "cases")) +
+    geom_point(aes(color = "cases")) +
+    geom_line(aes(y = deaths, color = "deaths")) +
+    geom_point(aes(y = deaths, color = "deaths")) +
+    scale_y_log10() +
+    theme(legend.position="bottom",
+          axis.text.x = element_text(angle = 90)) +
+    labs(title = "COVID19 in Japan", y= NULL)
+```
+
+## Part4. Model building (Can the number of deaths be predicted from the number of infection?)
+
+- The US_by_state data is grouped by state. For each state, I calculate the maximum number of deaths, cases, and population. In addition, I calculate the infection rate (cases_per_thou) and death rate (deaths_per_thou) (number of infections and deaths per 1,000 population).
+
+- In addition, the bottom 10 and top 10 of deaths_per_thou are also displayed.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+US_state_totals <- US_by_state %>%
+    group_by(Province_State) %>%
+    summarize(deaths = max(deaths), cases = max(cases),
+              population = max(Population),
+              cases_per_thou = 1000* cases / population,
+              deaths_per_thou = 1000* deaths / population) %>%
+    dplyr::filter(cases > 0, population > 0)
+
+US_state_totals %>%
+    slice_min(deaths_per_thou, n = 10) %>%
+    select(deaths_per_thou, cases_per_thou, everything())
+
+US_state_totals %>%
+    slice_max(deaths_per_thou, n = 10) %>%
+    select(deaths_per_thou, cases_per_thou, everything())
+```
+
+- I performed a single regression analysis using the lm function. Since the number of deaths is expected to increase as the number of infections increases, the model predicts deaths_per_thou using cases_per_thou.
+
+- The data seems to match the predictions. However, the adjusted R2 values are only 0.29 and I think there seems to be a limitation in creating a predict model based on only a single factor.  
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+mod <- lm(deaths_per_thou ~ cases_per_thou, data = US_state_totals)
+summary(mod)
+
+US_state_totals %>% slice_max(cases_per_thou)
+
+x_grid <- seq(1, 151)
+new_df <- tibble(cases_per_thou = x_grid)
+US_state_totals %>% mutate(pred = predict(mod))
+US_tot_w_pred <- US_state_totals %>% mutate(pred = predict(mod))
+#US_tot_w_pred
+
+US_tot_w_pred %>% ggplot() + 
+geom_point(aes(x = cases_per_thou, y = deaths_per_thou), color = "blue") +
+geom_point(aes(x = cases_per_thou, y = pred), color = "red") 
+
+
+plot(US_state_totals$cases_per_thou, US_state_totals$deaths_per_thou, xlab = "", ylab = "")
+data_sum_pred <- predict(mod, US_state_totals)
+par(new = TRUE)
+dataOrder <- order(US_state_totals$cases_per_thou)
+plot(US_state_totals$cases_per_thou[dataOrder], data_sum_pred[dataOrder], col = "blue",
+xlab = "cases_per_thou", ylab = "deaths_per_thou", axes=FALSE, type = "l", lwd = 1, lty = 1, pch = 1)
+
+```
+
+## Conclusion
+・I used leaflet to merge the world map with a scatter plot of infection cases of latitude and longitude. In the early stage, only China had many cases of infection. In the late stage, the United States has the highest number of cases, and other large cities with large populations, such as India, Brazil, France, and Japan, have many number of infections.  
+
+・I also checked the historical trends for India, China, Brazil, Japan. While the number of cases in all countries has increased over the years, China and Japan, in particular, have succeeded in halting the spread of the infection in its early stages, resulting in a gradual increase in the number of cases.
+
+・Since the number of deaths is expected to increase as the number of infections increases, I Performed a single regression analysis. The data seems to match the predictions. However, the adjusted R2 values are only 0.29 and I think there seems to be a limitation in creating a predict model based on only a single factor. In order to eliminate the bias such as above case in the early stages of modeling, it seems important to analysis the data and identify trends.  
+
+ 
+ 
